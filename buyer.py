@@ -17,7 +17,7 @@ def timing():
         time.sleep(2)
 
 
-def receving(name, sock):
+def receiving(name, sock):
     while not shutdown:
         try:
             tLock.acquire()
@@ -42,9 +42,8 @@ server = ('127.0.0.1', 5000)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.bind((host, port))
-s.setblocking(0)
-
-receivingThread = threading.Thread(target=receving, args=("RecvThread", s))
+s.setblocking(False)
+receivingThread = threading.Thread(target=receiving, args=("RecvThread", s))
 receivingThread.start()
 timingThread = threading.Thread(target=timing)
 timingThread.start()

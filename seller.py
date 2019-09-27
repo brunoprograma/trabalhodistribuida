@@ -21,7 +21,7 @@ def timing():
         time.sleep(2)
 
 
-def receving(name, sock):
+def receiving(name, sock):
     global tempo_i
     while not shutdown:
         try:
@@ -38,7 +38,8 @@ def receving(name, sock):
 
                 m = decoded_data.split(':')
                 cod = int(m[1])
-                pos = h.update('{}-{}'.format(alias, cod)).hexdigest()
+                h.update('{}-{}'.format(alias, cod).encode('utf-8'))
+                pos = h.hexdigest()
 
                 if pos in produtos:
                     if produtos[pos]['quantidade'] - int(m[2]) >= 0:
@@ -68,8 +69,8 @@ port = 0
 server = ('127.0.0.1', 5000)
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.bind((host, port))
-s.setblocking(0)
-receivingThread = threading.Thread(target=receving, args=("RecvThread", s))
+s.setblocking(False)
+receivingThread = threading.Thread(target=receiving, args=("RecvThread", s))
 receivingThread.start()
 timingThread = threading.Thread(target=timing)
 timingThread.start()
@@ -86,7 +87,8 @@ codigo = input("Codigo: ")
 nome = input("Nome: ")
 quantidade = input("Quantidade: ")
 
-posicao = h.update('{}-{}'.format(alias, codigo)).hexdigest()
+h.update('{}-{}'.format(alias, codigo).encode('utf-8'))
+posicao = h.hexdigest()
 if posicao not in produtos:
     produtos[posicao] = {}
 produtos[posicao]['quantidade'] = int(quantidade)
@@ -105,7 +107,8 @@ while mes != 'q':
     nome = input("Nome: ")
     quantidade = input("Quantidade: ")
 
-    posicao = h.update('{}-{}'.format(alias, codigo)).hexdigest()
+    h.update('{}-{}'.format(alias, codigo).encode('utf-8'))
+    posicao = h.hexdigest()
     if posicao not in produtos:
         produtos[posicao] = {}
     produtos[posicao]['quantidade'] = int(quantidade)

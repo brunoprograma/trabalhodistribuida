@@ -11,12 +11,11 @@ tempo_i = 0
 shutdown = False
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.bind((host, port))
-s.setblocking(0)
-quitting = False
+s.setblocking(False)
 
 print("Servidor inicializado.")
 
-while not quitting:
+while True:
 	try:
 		data, addr = s.recvfrom(1024)
 		decoded_data = data.decode('utf-8')
@@ -25,7 +24,7 @@ while not quitting:
 
 		if decoded_data == "poweroff":
 			print("Desligando...")
-			quitting = True
+			shutdown = True
 			continue
 
 		if addr not in clients:
