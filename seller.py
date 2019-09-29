@@ -49,18 +49,16 @@ def receiving(name, sock):
                 cod = decoded_data.get('codigo')
 
                 if cod:  # cod pode ser None quando executa na mesma máquina cliente e fornecedor
-                    pos = '{}-{}'.format(alias, cod)
-
-                    if pos in produtos:
-                        if produtos[pos]['quantidade'] - decoded_data.get('qtde') >= 0:
-                            produtos[pos]['quantidade'] -= decoded_data.get('qtde')
+                    if cod in produtos:
+                        if produtos[cod]['quantidade'] - decoded_data.get('qtde') >= 0:
+                            produtos[cod]['quantidade'] -= decoded_data.get('qtde')
                             message = str({'alias': alias, 'status': 'Confirmado', 'tempo': tempo})
-                            print(message, produtos[pos]['codigo'], produtos[pos]['quantidade'])
+                            print(message, produtos[cod]['codigo'], produtos[cod]['quantidade'])
                             message = message.encode('utf-8')
                             s.sendto(message, server)
                         else:
                             message = str({'alias': alias, 'status': 'Rejeitado', 'tempo': tempo})
-                            print(message, produtos[pos]['codigo'], produtos[pos]['quantidade'])
+                            print(message, produtos[cod]['codigo'], produtos[cod]['quantidade'])
                             message = message.encode('utf-8')
                             s.sendto(message, server)
                     else:
@@ -112,7 +110,7 @@ def init():
     produtos[posicao]['codigo'] = int(codigo)
     print('Cadastrado', codigo, posicao, produtos[posicao]['quantidade'])
 
-    message = str({'alias': alias, 'codigo': codigo, 'nome': nome, 'qtde': quantidade, 'tempo': tempo})
+    message = str({'alias': alias, 'codigo': posicao, 'nome': nome, 'qtde': quantidade, 'tempo': tempo})
     message = message.encode('utf-8')
     s.sendto(message, server)
 
@@ -131,7 +129,7 @@ def init():
         produtos[posicao]['codigo'] = int(codigo)
         print('Cadastrado', codigo, posicao, produtos[posicao]['quantidade'])
 
-        message = str({'alias': alias, 'codigo': codigo, 'nome': nome, 'qtde': int(quantidade), 'tempo': tempo})
+        message = str({'alias': alias, 'codigo': posicao, 'nome': nome, 'qtde': int(quantidade), 'tempo': tempo})
         message = message.encode('utf-8')
         s.sendto(message, server)
         mes = input("'q' para sair, enter para continuar cadastrando: ")
