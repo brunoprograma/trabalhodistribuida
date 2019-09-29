@@ -6,79 +6,93 @@ tLock = threading.Lock()
 tSem = threading.Semaphore()
 shutdown = False
 tempo = 0
+alias = ''
 
 
 def timing():
     global tempo
+    global shutdown
+    global alias
     while not shutdown:
         tSem.acquire()
-        tempo = tempo + 1
+        tempo += 1
         tSem.release()
         time.sleep(2)
 
 
 def receiving(name, sock):
+    global tempo
+    global shutdown
+    global alias
     while not shutdown:
         try:
             tLock.acquire()
             while True:
                 data, addr = sock.recvfrom(1024)
-                decoded_data = data.decode('utf-8')
+                decoded_data = eval(data.decode('utf-8'))
                 print(decoded_data)
 
-                t = decoded_data.split(':Tempo:')
-                if int(t[1]) > (int(tempo)+2):
+                t = decoded_data.get('tempo')
+                if t > tempo + 2:
                     tSem.acquire()
-                    tempo = int(t[1]) + 2
+                    tempo = t + 2
                     tSem.release()
         except:
             pass
         finally:
             tLock.release()
 
-host = '127.0.0.1'
-port = 0
-server = ('127.0.0.1', 5000)
 
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.bind((host, port))
-s.setblocking(False)
-receivingThread = threading.Thread(target=receiving, args=("RecvThread", s))
-receivingThread.start()
-timingThread = threading.Thread(target=timing)
-timingThread.start()
+def init():
+    global tempo
+    global shutdown
+    global alias
 
-alias = "Cliente"
-message = alias + ":Tempo:" + str(tempo)
-message = message.encode('utf-8')
+    host = '127.0.0.1'
+    port = 0
+    server = ('127.0.0.1', 5000)
 
-# Envio da mensagem ao servidor
-s.sendto(message, server)
-print("Loja Enviará Codigo: Nome : Quantidade")
-print("Pedido:")
-codigo = input("Código: ")
-quantidade = input("Quantidade: ")
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind((host, port))
+    s.setblocking(False)
+    receivingThread = threading.Thread(target=receiving, args=("RecvThread", s))
+    receivingThread.start()
+    timingThread = threading.Thread(target=timing)
+    timingThread.start()
 
-message = (alias + ":" + str(codigo) + ":" + str(quantidade) + ":Tempo:" + str(tempo))
-message = message.encode('utf-8')
-s.sendto(message, server)
+    alias = 'Cliente'
+    message = str({'alias': alias, 'tempo': tempo})
+    message = message.encode('utf-8')
 
-mes = input("'q' para sair, enter para continuar comprando: ")
-
-while mes != 'q':
+    # Envio da mensagem ao servidor
+    s.sendto(message, server)
+    print("Loja Enviará Codigo: Nome : Quantidade")
     print("Pedido:")
     codigo = input("Código: ")
     quantidade = input("Quantidade: ")
-    message = (alias + ":" + str(codigo) + ":" + str(quantidade) + ":Tempo:" + str(tempo))
+
+    message = str({'alias': alias, 'codigo': codigo, 'qtde': int(quantidade), 'tempo': tempo})
     message = message.encode('utf-8')
     s.sendto(message, server)
+
     mes = input("'q' para sair, enter para continuar comprando: ")
 
-message = 'Desconectando'
-message = (alias + ": " + message)
-message = message.encode('utf-8')
-s.sendto(message, server)
-shutdown = True
-timingThread.join()
-receivingThread.join()
-s.close()
+    while mes != 'q':
+        print("Pedido:")
+        codigo = input("Código: ")
+        quantidade = input("Quantidade: ")
+        message = str({'alias': alias, 'codigo': codigo, 'qtde': int(quantidade), 'tempo': tempo})
+        message = message.encode('utf-8')
+        s.sendto(message, server)
+        mes = input("'q' para sair, enter para continuar comprando: ")
+
+    message = 'Desconectando'
+    message = str({'alias': alias, 'mensagem': message})
+    message = message.encode('utf-8')
+    s.sendto(message, server)
+    shutdown = True
+    timingThread.join()
+    receivingThread.join()
+    s.close()
+
+init()
