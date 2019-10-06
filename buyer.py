@@ -1,6 +1,6 @@
-IP = '120.0.0.1'
+IP_INI = '127.0.0.1'
 PORTA = 5000
-peers = []
+peers = [IP_INI]
 
 
 def compra_produto():
