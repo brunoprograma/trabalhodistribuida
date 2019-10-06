@@ -23,8 +23,8 @@ class DB(object):
     def __init__(self):
         self.pk = 0
         self.produtos = dict()
-        self.peers = set()
-        self.eventos = set()
+        self.peers = list()
+        self.eventos = list()
 
     def get_produto_pk(self):
         with lock:
@@ -59,7 +59,7 @@ class DB(object):
 
     def insert_peer(self, peer):
         with lock:
-            self.peers.add(peer)
+            self.peers.append(peer)
             self.evento("peer", "insert", peer.to_dict())
             return True
 
@@ -74,11 +74,11 @@ class DB(object):
 
     def evento(self, tipo, acao, dados):
         with lock:
-            self.eventos.add(Evento(tempo=set_tempo(), tipo=tipo, acao=acao, dados=dados))
+            self.eventos.append(Evento(tempo=set_tempo(), tipo=tipo, acao=acao, dados=dados))
 
     def insert_evento(self, evento):
         with lock:
-            self.eventos.add(evento)
+            self.eventos.append(evento)
             return True
 
     def select_evento(self):
