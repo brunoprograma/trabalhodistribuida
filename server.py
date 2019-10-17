@@ -3,7 +3,7 @@ import time
 import requests
 import threading
 from threading import Lock
-from bottle import run, route, request, json_dumps, abort, post, put
+from bottle import run, request, json_dumps, abort, post, put, get
 
 SYNC_EVERY_SECONDS = 3
 lock_t = Lock()
@@ -66,7 +66,7 @@ class DB(object):
             return self.produtos[pk]
 
     def select_produto(self):
-        return [prod.update({'pk': k}) for k, prod in self.produtos.items()]
+        return self.produtos
 
     def comprar(self, pk, qtde):
         with lock_db:
@@ -123,16 +123,16 @@ except:
 if initial_peer and len(initial_peer.split(':')) != 2:
     print('quando informar um peer, informe ip:porta')
 elif initial_peer:
-    requests.post('http://' + initial_peer + '/peer', json={'porta': int(sys.argv[1])})
+    requests.post('http://' + initial_peer + '/peers', json={'porta': int(sys.argv[1])})
     db.evento("peer", "insert", **dict(ip=initial_peer.split(':')[0], porta=int(initial_peer.split(':')[1])), tempo=initial_peer)
 
 
-@route('/')
+@get('/')
 def index():
     return "Hello, World!"
 
 
-@post('/peer')
+@post('/peers')
 def inserir_peer():
     global db
 
@@ -147,19 +147,19 @@ def inserir_peer():
     return json_dumps({'sucesso': 'cadastrado com sucesso'})
 
 
-@route('/peers')
+@get('/peers')
 def listar_peers():
     global db
     return json_dumps({'peers': db.select_peer()})
 
 
-@route('/produtos')
+@get('/produtos')
 def listar_produtos():
     global db
     return json_dumps({'produtos': db.select_produto()})
 
 
-@route('/eventos')
+@get('/eventos')
 def listar_eventos():
     global db
     return json_dumps({'eventos': db.select_evento()})
@@ -176,7 +176,7 @@ def inserir_produto():
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
         abort(400)
 
-    db.evento("insert", "produto", **dict(seller=request.remote_addr, nome=request.json['nome'], qtde=request.json['qtde']))
+    db.evento("produto", "insert", **dict(seller=request.remote_addr, nome=request.json['nome'], qtde=request.json['qtde']))
 
     return json_dumps({'sucesso': 'cadastrado com sucesso'})
 
@@ -187,14 +187,14 @@ def atualiza_produto(id_produto):
 
     if not request.json:
         abort(400)
-    elif id_produto not in db.select_produto().keys():
-        return json_dumps({'erro', 'produto não existe'}), 404
+    elif id_produto not in db.select_produto():
+        return json_dumps({'erro': 'produto não existe'})
     elif 'nome' in request.json and type(request.json['nome']) != str:
         abort(400)
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
         abort(400)
 
-    db.evento("update", "produto", **dict(nome=request.json.get('nome'), qtde=request.json.get('qtde')))
+    db.evento("produto", "update", **dict(nome=request.json.get('nome'), qtde=request.json.get('qtde')))
 
     return json_dumps({'sucesso': 'atualizado com sucesso'})
 
@@ -209,8 +209,8 @@ def comprar_produto():
         abort(400)
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
         abort(400)
-    elif request.json['id'] not in db.select_produto().keys():
-        return json_dumps({'erro', 'produto não encontrado'}), 404
+    elif request.json['id'] not in db.select_produto():
+        return json_dumps({'erro': 'produto não encontrado'})
     elif db.select_produto().get(request.json['id']).qtde < request.json['qtde']:
         return json_dumps({'erro': 'quantidade insuficiente'})
 
@@ -257,4 +257,4 @@ def replicador():
 
 t = threading.Thread(target=replicador)
 t.start()
-run(host='localhost', port=int(sys.argv[1]))
+run(host='localhost', port=int(sys.argv[1]), debug=True)
