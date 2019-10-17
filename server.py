@@ -22,9 +22,11 @@ def set_tempo(novo_tempo=None):
     with lock_t:
         # estratégia quando o novo tempo informado não é inteiro ele apenas retorna o próprio valor
         # isso é usado no start do server quando eles tem que sincronizar apenas os peers
-        if novo_tempo:
-            if type(novo_tempo) == int:
+        if novo_tempo is not None:
+            if type(novo_tempo) == int and novo_tempo > tempo:
                 tempo = novo_tempo
+            elif type(novo_tempo) == int and novo_tempo <= tempo:
+                pass
             else:
                 return novo_tempo
         else:
@@ -245,7 +247,7 @@ def replicador():
                     for chave in chaves:
                         # a chave é o tempo do evento
                         evento = eventos[chave]
-                        db.evento(evento.get('tipo'), evento.get('acao'), chave, **evento.get('dados', {}))
+                        db.evento(evento.get('tipo'), evento.get('acao'), int(chave) if chave is not None and chave.isdigit() else chave, **evento.get('dados', {}))
 
                     time.sleep(1)
 
