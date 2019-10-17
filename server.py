@@ -3,7 +3,7 @@ import time
 import requests
 import threading
 from threading import Lock
-from bottle import run, request, json_dumps, abort, post, put, get
+from bottle import run, request, json_dumps, post, put, get
 
 SYNC_EVERY_SECONDS = 3
 lock_t = Lock()
@@ -60,9 +60,9 @@ class DB(object):
     def update_produto(self, pk, nome=None, qtde=None):
         with lock_db:
             if nome:
-                self.produtos[pk].nome = nome
+                self.produtos[pk]['nome'] = nome
             if qtde:
-                self.produtos[pk].qtde = qtde
+                self.produtos[pk]['qtde'] = qtde
             return self.produtos[pk]
 
     def select_produto(self):
@@ -137,9 +137,9 @@ def inserir_peer():
     global db
 
     if not request.json:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'porta' in request.json and type(request.json['porta']) != int:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
 
     db.evento("peer", "insert", **dict(ip=request.remote_addr, porta=request.json['porta'],
                                        tempo='{}:{}'.format(request.remote_addr, request.json['porta'])))
@@ -170,11 +170,11 @@ def inserir_produto():
     global db
 
     if not request.json:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'nome' in request.json and type(request.json['nome']) != str:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
 
     db.evento("produto", "insert", **dict(seller=request.remote_addr, nome=request.json['nome'], qtde=request.json['qtde']))
 
@@ -186,13 +186,13 @@ def atualiza_produto(id_produto):
     global db
 
     if not request.json:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif id_produto not in db.select_produto():
         return json_dumps({'erro': 'produto não existe'})
     elif 'nome' in request.json and type(request.json['nome']) != str:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
 
     db.evento("produto", "update", **dict(nome=request.json.get('nome'), qtde=request.json.get('qtde')))
 
@@ -204,14 +204,14 @@ def comprar_produto():
     global db
 
     if not request.json:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'id' in request.json and type(request.json['id']) != int:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
-        abort(400)
+        return json_dumps({'erro': 'requisição inválida'})
     elif request.json['id'] not in db.select_produto():
         return json_dumps({'erro': 'produto não encontrado'})
-    elif db.select_produto().get(request.json['id']).qtde < request.json['qtde']:
+    elif db.select_produto().get(request.json['id']).get('qtde', 0) < request.json['qtde']:
         return json_dumps({'erro': 'quantidade insuficiente'})
 
     resultado = db.comprar(request.json['id'], request.json['qtde'])
