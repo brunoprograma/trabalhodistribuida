@@ -3,10 +3,12 @@ import time
 import requests
 import threading
 from threading import Lock
-from flask import Flask, jsonify, request, abort
+from bottle import run, route, request, json_dumps, abort, post, put
 
-app = Flask(__name__)
-lock = Lock()
+SYNC_EVERY_SECONDS = 3
+lock_t = Lock()
+lock_db = Lock()
+lock_pk = Lock()
 tempo = -1
 
 
@@ -16,11 +18,15 @@ def set_tempo(novo_tempo=None):
     :param novo_tempo: int: se passado, apenas atualiza o tempo para o valor informado
     :return: int: tempo
     """
-    global lock
     global tempo
-    with lock:
+    with lock_t:
+        # estratégia quando o novo tempo informado não é inteiro ele apenas retorna o próprio valor
+        # isso é usado no start do server quando eles tem que sincronizar apenas os peers
         if novo_tempo:
-            tempo = novo_tempo
+            if type(novo_tempo) == int:
+                tempo = novo_tempo
+            else:
+                return novo_tempo
         else:
             tempo += 1
         return tempo
@@ -37,8 +43,7 @@ class DB(object):
         self.eventos = dict()
 
     def get_produto_pk(self, pk=None):
-        global lock
-        with lock:
+        with lock_pk:
             if pk:
                 if pk > self.pk:
                     self.pk = pk
@@ -47,15 +52,13 @@ class DB(object):
             return self.pk
 
     def insert_produto(self, seller, nome, qtde, pk=None):
-        global lock
-        with lock:
-            produto = Produto(seller, nome, qtde)
+        with lock_db:
+            produto = dict(seller=seller, nome=nome, qtde=qtde)
             self.produtos.update({self.get_produto_pk(pk): produto})
             return produto
 
     def update_produto(self, pk, nome=None, qtde=None):
-        global lock
-        with lock:
+        with lock_db:
             if nome:
                 self.produtos[pk].nome = nome
             if qtde:
@@ -63,34 +66,32 @@ class DB(object):
             return self.produtos[pk]
 
     def select_produto(self):
-        return [prod.to_dict().update({'pk': k}) for k, prod in self.produtos.items()]
+        return [prod.update({'pk': k}) for k, prod in self.produtos.items()]
 
     def comprar(self, pk, qtde):
-        global lock
-        with lock:
+        with lock_db:
             produto = self.produtos[pk]
-            if produto.qtde >= qtde:
-                nova_qtde = produto.qtde - qtde
+            if produto.get('qtde') >= qtde:
+                nova_qtde = produto.get('qtde') - qtde
                 self.evento("produto", "update", pk=pk, qtde=nova_qtde)
                 return True
             return False
 
     def insert_peer(self, ip, porta):
-        global lock
-        with lock:
-            peer = Peer(ip, porta)
+        with lock_db:
+            peer = dict(ip=ip, porta=porta)
             self.peers['{}:{}'.format(ip, porta)] = peer
             return peer
 
     def delete_peer(self, ip, porta):
-        global lock
-        with lock:
-            peer = Peer(ip, porta)
+        with lock_db:
+            peer = dict(ip=ip, porta=porta)
             self.peers.pop('{}:{}'.format(ip, porta), None)
             return peer
 
     def select_peer(self):
-        return self.peers.keys()
+        with lock_db:
+            return list(self.peers.keys())
 
     def evento(self, tipo, acao, tempo=None, **kwargs):
         """
@@ -101,98 +102,70 @@ class DB(object):
         :param tempo: caso for uma sincronização de dados o tempo virá setado
         :param args: dados do objeto
         """
-        global lock
-        with lock:
-            obj = getattr(self, '{}_{}'.format(acao, tipo))(**kwargs)
+        obj = getattr(self, '{}_{}'.format(acao, tipo))(**kwargs)
+        with lock_db:
             tempo = set_tempo(tempo)
-            self.eventos[tempo] = Evento(tipo=tipo, acao=acao, dados=obj.to_dict())
+            self.eventos[tempo] = dict(tipo=tipo, acao=acao, dados=obj)
 
     def select_evento(self):
-        return self.eventos
-
-
-class Produto(object):
-    def __init__(self, seller, nome, qtde):
-        self.seller = seller
-        self.nome = nome
-        self.qtde = qtde
-
-    def to_dict(self):
-        return {
-            "seller": self.seller,
-            "nome": self.nome,
-            "qtde": self.qtde
-        }
-
-
-class Peer(object):
-    def __init__(self, ip, porta):
-        self.ip = ip
-        self.porta = porta
-
-    def to_dict(self):
-        return {"ip": self.ip, "porta": self.porta}
-
-
-class Evento(object):
-    def __init__(self, tipo, acao, dados):
-        """
-        Registra um evento ocorrido
-        :param tipo: str: tipo do objeto envolvido no evento: "Produto" ou "Peer"
-        :param acao: str: "insert" ou "delete" (não existe update, o update é um insert que sobrescreve o registro atual)
-        :param dados: dict: dados do objeto
-        """
-        self.tipo = tipo
-        self.acao = acao
-        self.dados = dados
-
-    def to_dict(self):
-        return {
-            "tipo": self.tipo,
-            "acao": self.acao,
-            "dados": self.dados
-        }
+        with lock_db:
+            return self.eventos
 
 
 db = DB()  # BANCO DE DADOS
 
 try:
     initial_peer = sys.argv[2]
-    print(initial_peer)
 except:
     initial_peer = None
 
+# quando conecta pela primeira vez informa o servidor que já está rodando, ele vai nos adicionar à lista de peers
 if initial_peer and len(initial_peer.split(':')) != 2:
     print('quando informar um peer, informe ip:porta')
-    exit(1)
 elif initial_peer:
-    db.evento("peer", "insert", **dict(ip=initial_peer.split(':')[0], porta=int(initial_peer.split(':')[0])))
+    requests.post('http://' + initial_peer + '/peer', json={'porta': int(sys.argv[1])})
+    db.evento("peer", "insert", **dict(ip=initial_peer.split(':')[0], porta=int(initial_peer.split(':')[1])), tempo=initial_peer)
 
 
-@app.route('/')
+@route('/')
 def index():
     return "Hello, World!"
 
 
-@app.route('/peers', methods=['GET'])
+@post('/peer')
+def inserir_peer():
+    global db
+
+    if not request.json:
+        abort(400)
+    elif 'porta' in request.json and type(request.json['porta']) != int:
+        abort(400)
+
+    db.evento("peer", "insert", **dict(ip=request.remote_addr, porta=request.json['porta'],
+                                       tempo='{}:{}'.format(request.remote_addr, request.json['porta'])))
+
+    return json_dumps({'sucesso': 'cadastrado com sucesso'})
+
+
+@route('/peers')
 def listar_peers():
     global db
-    return jsonify({'peers': db.select_peer()})
+    return json_dumps({'peers': db.select_peer()})
 
 
-@app.route('/produtos', methods=['GET'])
+@route('/produtos')
 def listar_produtos():
     global db
-    return jsonify({'produtos': db.select_produto()})
+    return json_dumps({'produtos': db.select_produto()})
 
 
-@app.route('/eventos', methods=['GET'])
+@route('/eventos')
 def listar_eventos():
     global db
-    return jsonify({'eventos': db.select_evento()})
+    return json_dumps({'eventos': db.select_evento()})
 
 
-@app.route('/produtos', methods=['POST'])
+@post('/produtos')
 def inserir_produto():
     global db
 
@@ -205,17 +178,17 @@ def inserir_produto():
 
     db.evento("insert", "produto", **dict(seller=request.remote_addr, nome=request.json['nome'], qtde=request.json['qtde']))
 
-    return jsonify({'sucesso': 'cadastrado com sucesso'})
+    return json_dumps({'sucesso': 'cadastrado com sucesso'})
 
 
-@app.route('/produtos/<int:id_produto>', methods=['PUT'])
+@put('/produtos/<id_produto>')
 def atualiza_produto(id_produto):
     global db
 
     if not request.json:
         abort(400)
     elif id_produto not in db.select_produto().keys():
-        return jsonify({'erro', 'produto não existe'}), 404
+        return json_dumps({'erro', 'produto não existe'}), 404
     elif 'nome' in request.json and type(request.json['nome']) != str:
         abort(400)
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
@@ -223,10 +196,10 @@ def atualiza_produto(id_produto):
 
     db.evento("update", "produto", **dict(nome=request.json.get('nome'), qtde=request.json.get('qtde')))
 
-    return jsonify({'sucesso': 'atualizado com sucesso'})
+    return json_dumps({'sucesso': 'atualizado com sucesso'})
 
 
-@app.route('/comprar', methods=['POST'])
+@put('/comprar')
 def comprar_produto():
     global db
 
@@ -237,45 +210,51 @@ def comprar_produto():
     elif 'qtde' in request.json and type(request.json['qtde']) != int:
         abort(400)
     elif request.json['id'] not in db.select_produto().keys():
-        return jsonify({'erro', 'produto não encontrado'}), 404
+        return json_dumps({'erro', 'produto não encontrado'}), 404
     elif db.select_produto().get(request.json['id']).qtde < request.json['qtde']:
-        return jsonify({'erro': 'quantidade insuficiente'})
+        return json_dumps({'erro': 'quantidade insuficiente'})
 
     resultado = db.comprar(request.json['id'], request.json['qtde'])
 
     if not resultado:
-        return jsonify({'erro': 'quantidade insuficiente'})
+        return json_dumps({'erro': 'quantidade insuficiente'})
 
-    return jsonify({'sucesso': 'comprado com sucesso'})
+    return json_dumps({'sucesso': 'comprado com sucesso'})
 
 
 def replicador():
     """
     Passa em todos os peers conhecidos e atualiza os eventos, inclusive os outros peers que foram conectados
     """
-    global db
-    global tempo
-
-    time.sleep(5)
+    time.sleep(SYNC_EVERY_SECONDS)
     while True:
-        time.sleep(1)
-        for peer in db.select_peer():
-            r = requests.get(peer + '/eventos')
-            if r.status_code == 200:
-                eventos = r.json().get('eventos')
-                # só atualizamos os eventos que não temos pra economizar tempo
-                chaves = set(eventos.keys()) - set(db.eventos.keys())
-
-                for chave in chaves:
-                    # a chave é o tempo do evento
-                    evento = eventos[chave]
-                    db.evento(evento.tipo, evento.acao, chave, **evento.dados)
-
+        time.sleep(SYNC_EVERY_SECONDS)
+        peers = list(db.select_peer())
+        for peer in peers:
+            try:
+                r = requests.get('http://' + peer + '/eventos')
+            except:
                 time.sleep(1)
+                continue
+            else:
+                if r.status_code == 200:
+                    eventos = r.json().get('eventos')
+                    # só atualizamos os eventos que não temos pra economizar tempo
+                    chaves = set(eventos.keys()) - set(db.eventos.keys())
 
-        print(', '.join(db.select_peer()), tempo)
+                    for chave in chaves:
+                        # a chave é o tempo do evento
+                        evento = eventos[chave]
+                        db.evento(evento.get('tipo'), evento.get('acao'), chave, **evento.get('dados', {}))
+
+                    time.sleep(1)
+
+        if db.select_peer():
+            print(', '.join(db.select_peer()))
+        if tempo != -1:
+            print(tempo)
 
 
 t = threading.Thread(target=replicador)
 t.start()
-app.run(debug=True)
+run(host='localhost', port=int(sys.argv[1]))
