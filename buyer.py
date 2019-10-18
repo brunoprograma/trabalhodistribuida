@@ -8,13 +8,11 @@ if len(sys.argv) < 2 or len(sys.argv[1].split(':')) != 2:
     exit(1)
 
 peers = [sys.argv[1]]
-seller_id = None
 SYNC_EVERY_SECONDS = 10
 
 
 def comprar_produto():
     global peers
-    global seller_id
 
     id_produto = input('ID: ')
     qtde = input('Quantidade: ')
@@ -45,7 +43,6 @@ def comprar_produto():
 
 def lista_produtos():
     global peers
-    global seller_id
 
     for peer in peers:
         try:

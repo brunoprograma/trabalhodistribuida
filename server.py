@@ -71,13 +71,12 @@ class DB(object):
         return self.produtos
 
     def comprar(self, pk, qtde):
-        with lock_db:
-            produto = self.produtos[pk]
-            if produto.get('qtde') >= qtde:
-                nova_qtde = produto.get('qtde') - qtde
-                self.evento("produto", "update", pk=pk, qtde=nova_qtde)
-                return True
-            return False
+        produto = self.produtos[pk]
+        if produto.get('qtde') >= qtde:
+            nova_qtde = produto.get('qtde') - qtde
+            self.evento("produto", "update", pk=pk, qtde=nova_qtde)
+            return True
+        return False
 
     def insert_peer(self, ip, porta):
         with lock_db:
@@ -92,8 +91,7 @@ class DB(object):
             return peer
 
     def select_peer(self):
-        with lock_db:
-            return list(self.peers.keys())
+        return list(self.peers.keys())
 
     def evento(self, tipo, acao, tempo=None, **kwargs):
         """
@@ -110,8 +108,7 @@ class DB(object):
             self.eventos[tempo] = dict(tipo=tipo, acao=acao, dados=obj)
 
     def select_evento(self):
-        with lock_db:
-            return self.eventos
+        return self.eventos
 
 
 db = DB()  # BANCO DE DADOS
